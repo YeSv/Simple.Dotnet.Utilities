@@ -88,6 +88,10 @@
             for (var i = 0; i < memory.Length; i++) yield return memory.Span[i];
         }
 
-        public static void CopyTo<T>(this Rent<T> rent, IBufferWriter<T> writer) => rent.WrittenSpan.CopyTo(writer.GetSpan(rent.WrittenSpan.Length));
+        public static void CopyTo<T>(this Rent<T> rent, IBufferWriter<T> writer)
+        {
+            rent.WrittenSpan.CopyTo(writer.GetSpan(rent.WrittenSpan.Length));
+            writer.Advance(rent.WrittenSpan.Length);
+        }
     }
 }

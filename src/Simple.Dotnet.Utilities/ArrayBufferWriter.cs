@@ -88,7 +88,11 @@
             for (var i = 0; i < memory.Length; i++) yield return memory.Span[i];
         }
 
-        public static void CopyTo<T>(this ArrayBufferWriter<T> source, IBufferWriter<T> destination) => source.WrittenSpan.CopyTo(destination.GetSpan(source.Written));
+        public static void CopyTo<T>(this ArrayBufferWriter<T> source, IBufferWriter<T> destination)
+        {
+            source.WrittenSpan.CopyTo(destination.GetSpan(source.Written));
+            destination.Advance(source.Written);
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Append<T>(this ArrayBufferWriter<T> writer, T data)
