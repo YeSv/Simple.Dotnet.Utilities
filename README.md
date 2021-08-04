@@ -1223,62 +1223,53 @@ A potential real-world example for `Arc` is issue with C# Redis client implement
 
 // Pseudocode
 
+// NOTE: This code doesn't handle exceptions you should retry in action block or send command (Unit) once more after some time
 // Wrapper around Redis ConnectionMultiplexer
 public sealed class RedisClient : IDisposable
 {
-    public RedisClient(string connectionString, ActionBlock<Unit> channel)
-    {
-        Raw = ConnectionMultiplexer.Connect(connectionString); // Create connection to redis
-        Raw.ConnectionFailed += (s, e) => channel.Post(Unit.Shared); // once issue occurs we send a message to channel
-    }
+    ArcRent<IRedisConnection> _redisRent; // Store a rent so counter is 1 at minimum
 
-    public ConnectionMultiplexer Raw { get; }
+    volatile Arc<IRedisConnection> _arc; // Arc
+    readonly ActionBlock<Unit> _refresher; // Or you can use Channels
 
-    public void Dispose() => Raw?.Dispose();
-}
-
-// Provides a redis client :)
-public sealed class RedisClientProvider : IDisposable
-{
-    ActionBlock<Unit> _refresher; // Or you can use Channels
-    ArcRent<RedisClient> _redisRent; // Store a rent so counter is 1 at minimum
-
-    volatile Arc<RedisClient> _arc; 
-
-    public RedisClientProvider(string connectionString)
+    public RedisClient(string connectionString)
     {
         _refresher = new ActionBlock<Unit>(u => 
         {
-            using var oldRent = _redisRent; // Drop counter on an old instance by 1 (if it's still > 0 other thread will dispose old RedisClient)
+            var oldRent = _redisRent;
 
-            _arc = new Arc<RedisClient>(new RedisClient(connectionString));
-            _redisRent = _arc.Rent(); // Create a new rent
+            var client = ConnectionMultiplexer.Connect(connectionString); // Create connection to redis
+            client.ConnectionFailed += (s, e) => _refresher.Post(Unit.Shared); // once issue occurs we send a message to action block
+            
+            _arc = new Arc<IRedisConnection>(client);
+            _redisRent = _arc.Rent();
+
+            oldRent.Dispose(); // Drop an old rent. This will decrement a counter. If it still > 0 other thread will dispose redis client
         });
-        _arc = new Arc<RedisClient>(new RedisClient(connectionString));
-        _redisRent = _arc.Rent(); // Rent and increase counter
+
+        var client = ConnectionMultiplexer.Connect(connectionString); // Create connection to redis
+        client.ConnectionFailed += (s, e) => _refresher.Post(Unit.Shared); // once issue occurs we send a message to action block
     }
 
-    public ArcRent<RedisClient> Rent() => _arc.Rent();
+    public ArcRent<IRedisConnection> Rent() => _arc.Rent();
 
-    public void Dispose()
+    public void Dispose() 
     {
         _refresher.Complete();
         _refresher.Completion.Wait();
         _redisRent.Dispose();
     }
-
 }
-
 
 // Main
 
-var provider = new RedisClientProvider("connection");
+var client = new RedisClient("connection");
 
 // Somewhere in controller action/method/etc
 
 using var redisRent = provider.Rent();
 // Do something with redis client
-redisRent.Value.Raw.Somemethod();
+redisRent.Value.Somemethod();
 
 // Rent will be disposed and counter will be decremented
 
