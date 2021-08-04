@@ -1230,7 +1230,7 @@ public sealed class RedisClient : IDisposable
     ArcRent<IRedisConnection> _redisRent; // Store a rent so counter is 1 at minimum
 
     volatile Arc<IRedisConnection> _arc; // Arc
-    readonly ActionBlock<Unit> _refresher; // Or you can use Channels
+    readonly ActionBlock<IRedisConnection> _refresher; // Or you can use Channels
 
     public RedisClient(string connectionString)
     {
@@ -1267,7 +1267,7 @@ public sealed class RedisClient : IDisposable
 
 // Main
 
-var client = new RedisClient("connection");
+using var client = new RedisClient("connection");
 
 // Somewhere in controller action/method/etc
 
