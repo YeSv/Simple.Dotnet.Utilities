@@ -1234,12 +1234,13 @@ public sealed class RedisClient : IDisposable
 
     public RedisClient(string connectionString)
     {
-        _refresher = new ActionBlock<Unit>(u => 
+        _refresher = new ActionBlock<IRedisConnection>(c => 
         {
             var oldRent = _redisRent;
+            if (oldRent.Value != c) return; // Duplicate message or outdated, current rent and passed client do not match
 
             var client = ConnectionMultiplexer.Connect(connectionString); // Create connection to redis
-            client.ConnectionFailed += (s, e) => _refresher.Post(Unit.Shared); // once issue occurs we send a message to action block
+            client.ConnectionFailed += (s, e) => _refresher.Post(client); // once issue occurs we send a message to action block
             
             _arc = new Arc<IRedisConnection>(client);
             _redisRent = _arc.Rent();
@@ -1248,7 +1249,10 @@ public sealed class RedisClient : IDisposable
         });
 
         var client = ConnectionMultiplexer.Connect(connectionString); // Create connection to redis
-        client.ConnectionFailed += (s, e) => _refresher.Post(Unit.Shared); // once issue occurs we send a message to action block
+        client.ConnectionFailed += (s, e) => _refresher.Post(client); // once issue occurs we send a message to action block
+
+        _arc = new Arc<IRedisConnection>(client);
+        _redisRent = _arc.Rent();
     }
 
     public ArcRent<IRedisConnection> Rent() => _arc.Rent();
