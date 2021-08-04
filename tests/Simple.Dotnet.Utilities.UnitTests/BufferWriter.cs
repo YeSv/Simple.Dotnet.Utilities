@@ -130,8 +130,8 @@
 
             writer.HasSome.Should().BeTrue();
             
-            writer.GetSpan().Length.Should().BeGreaterThan(10);
-            writer.GetMemory().Span.Length.Should().BeGreaterThan(10);
+            writer.GetSpan().Length.Should().Be(10);
+            writer.GetMemory().Span.Length.Should().Be(10);
 
             var writtenSpan = writer.WrittenSpan;
             for (var i = 0; i < writtenSpan.Length; i++) writtenSpan[i].Should().Be(i);

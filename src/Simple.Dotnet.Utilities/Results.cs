@@ -2,7 +2,6 @@
 {
     using System;
     using System.Runtime.CompilerServices;
-    using System.Threading.Tasks;
 
     public sealed class Unit : IEquatable<Unit>
     {
@@ -21,91 +20,53 @@
         public override string ToString() => nameof(Unit);
     }
     
-    public readonly struct UniResult<T> : IEquatable<UniResult<T>> where T : class
+    public readonly struct UniResult<TOk, TError> : IEquatable<UniResult<TOk, TError>> where TOk : class where TError : class
     {
         public readonly object? Data;
 
-        public UniResult(T data) => Data = data;
-        public UniResult(object? error) => Data = error;
+        public UniResult(TOk? data) => Data = data;
+        public UniResult(TError error) => Data = error;
 
-        public bool IsOk => Data is T or null;
+        public bool IsOk => Data is TOk or null;
+        public TOk? Ok => IsOk ? Data as TOk ?? null : throw new InvalidOperationException($"Result does not contain data of type {typeof(TOk)}");
+        public TError? Error => !IsOk ? Data as TError ?? null : throw new InvalidOperationException($"Result does not contain data of type {typeof(TError)}");
 
         public override int GetHashCode() => Data?.GetHashCode() ?? 0;
 
-        public bool Equals(UniResult<T> other)
+        public bool Equals(UniResult<TOk, TError> other)
         {
             if (Data == null || other.Data == null) return Data == other.Data;
-            if (Data is T && other.Data is T && Data is IEquatable<T> equatable) return equatable.Equals((IEquatable<T>)other.Data);
-            return Data.Equals(other.Data);
+            return Data switch
+            {
+                TOk and IEquatable<TOk> okEquatable => okEquatable.Equals((IEquatable<TOk>) other.Data),
+                TError and IEquatable<TError> errEquatable => errEquatable.Equals((IEquatable<TError>) other.Data),
+                _ => Data.Equals(other.Data)
+            };
         }
 
-        public override bool Equals(object obj) => obj is UniResult<T> other && Equals(other);
+        public static void Deconstruct(in UniResult<TOk, TError> result, out TOk? ok, out TError? error)
+        {
+            ok = default; error = default;
+            if (result.IsOk) ok = result.Ok;
+            else error = result.Error;
+        }
+
+        public override bool Equals(object obj) => obj is UniResult<TOk, TError> other && Equals(other);
 
         public override string ToString() => Data as string ?? Data?.ToString() ?? "Result with null data";
 
-        public static explicit operator string(in UniResult<T> result) => result.ToString();
-        
-        public static explicit operator Exception(in UniResult<T> result) => result.Data is Exception ex ? ex : throw new InvalidOperationException("Failed to cast inner data to exception");
+        public static explicit operator TOk?(in UniResult<TOk, TError> result) => result.IsOk ? (TOk?)result.Data : throw new InvalidOperationException($"Result does not contain data of type: {typeof(TOk)}");
 
-        public static explicit operator T(in UniResult<T> result) => (T) result.Data!;
+        public static explicit operator TError?(in UniResult<TOk, TError> result) => result.IsOk ? (TError?)result.Data : throw new InvalidOperationException($"Result does not contain data of type: {typeof(TError)}");
     }
 
     public static class UniResult
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static UniResult<T> Ok<T>(T data) where T : class => new (data);
+        public static UniResult<TOk, TError> Ok<TOk, TError>(TOk data) where TOk : class where TError : class => new (data);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static UniResult<T> Error<T>(object? error) where T : class => new (error);
-    }
-
-    public readonly struct Result<T> : IEquatable<Result<T>>
-    {
-        public readonly T? Data;
-        public readonly object? Error;
-
-        public bool IsOk => Error == null;
-
-        public Result(T data)
-        {
-            Data = data;
-            Error = null;
-        }
-
-        public Result(object error)
-        {
-            Error = error;
-            Data = default;
-        }
-
-        public bool Equals(Result<T> other)
-        {
-            if (IsOk != other.IsOk) return false;
-
-            if (Error != null || other.Error != null)
-            {
-                if (Error == null || other.Error == null) return Error == other.Error;
-                return Error.Equals(other.Error);
-            }
-            
-            if (Data is null && other.Data is null) return true;
-            if (Data is null && other.Data is not null || Data is not null && other.Data is null) return false;
-            if (Data is IEquatable<T> d1) return d1.Equals((IEquatable<T>)other.Data!);
-            
-            return Data!.Equals(other.Data!);
-        }
-
-        public override bool Equals(object? obj) => obj is Result<T> other && Equals(other);
-
-        public override int GetHashCode() => Error?.GetHashCode() ?? Data?.GetHashCode() ?? 0;
-
-        public override string ToString() => Error?.ToString() ?? Data?.ToString() ?? "Result with null data";
-
-        public static explicit operator string(in Result<T> result) => result.ToString();
-
-        public static explicit operator Exception(in Result<T> result) => result.Error is Exception ex ? ex : throw new InvalidOperationException("Failed to cast inner data to exception");
-
-        public static explicit operator T(in Result<T> result) => result.IsOk ? result.Data! : throw new InvalidOperationException("Result does not contain ok data");
+        public static UniResult<TOk, TError> Error<TOk, TError>(TError error) where TOk : class where TError : class => new (error);
     }
 
     public readonly struct Result<TOk, TError> : IEquatable<Result<TOk, TError>>
@@ -152,6 +113,13 @@
         public override string ToString() => Ok?.ToString() ?? Error?.ToString() ?? "Result with null data";
 
 
+        public static void Deconstruct(in Result<TOk, TError> result, out TOk? ok, out TError? error)
+        {
+            ok = default; error = default;
+            if (result.IsOk) ok = result.Ok;
+            else error = result.Error;
+        }
+
         public static explicit operator string(in Result<TOk, TError> result) => result.IsOk switch
         {
             true when result.Ok is string okStr => okStr,
@@ -165,16 +133,6 @@
 
     public static class Result
     {
-        public static readonly Result<Unit> UnitResult = new(new Unit());
-
-        public static readonly Task<Result<Unit>> UnitTask = Task.FromResult(UnitResult);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static Result<T> Ok<T>(T data)  => new(data);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static Result<T> Error<T>(object error) => new(error);
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Result<TOk, TError> Ok<TOk, TError>(TOk data) => new(data);
 
@@ -185,21 +143,12 @@
     public static class ResultsExtensions
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static T? Unwrap<T>(in this UniResult<T> result) where T : class => (T) result.Data;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static Result<TOk, TError> To<TOk, TError>(in this UniResult<TOk> result) where TOk : class where TError : class => result.Data switch
+        public static Result<TOk, TError> AsResult<TOk, TError>(in this UniResult<TOk, TError> result) where TOk : class where TError : class => result.Data switch
         {
             TOk ok => new(ok),
             TError error => new(error),
             null => new((TOk?)null),
             _ => throw new InvalidOperationException("Result contains not expected type, not possible to cast")
         };
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static TError Error<TOk, TError>(in this UniResult<TOk> result) where TOk : class where TError: class => result.IsOk ? throw new InvalidOperationException("This is not an error result. Check IsOk.") : (TError) result.Data!;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static TError Error<TOk, TError>(in this Result<TOk> result) => result.IsOk ? throw new InvalidOperationException("This is not an error result. Check IsOk.") : (TError)result.Error!;
     }
 }

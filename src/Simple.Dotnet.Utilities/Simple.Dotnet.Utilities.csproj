@@ -7,7 +7,7 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <Authors>YeSv</Authors>
-    <Version>1.0.1</Version>
+    <Version>1.0.2</Version>
     <Description>Utilities that you might use in your next project</Description>
     <PackageTags>result, buffer, tasks</PackageTags>
     <PackageProjectUrl>https://github.com/YeSv/Simple.Dotnet.Utilities</PackageProjectUrl>

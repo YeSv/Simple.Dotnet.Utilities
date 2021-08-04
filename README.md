@@ -1,207 +1,49 @@
-Hi, this readme describes how to use classes available in library and use cases.
-Feel free to add you own classes that might help others writing simple and yet performant (hopefully) apps.
+## NuGet
+[Simple.Dotnet.Buffers](https://www.nuget.org/packages/Simple.Dotnet.Utilities/)
+
+## Table of contents
+1. [Results](#1-results) - Wrappers around return values
+2. [Rent](#2-rent) - Allows to use `IDisposable` `using` syntax on an array from `ArrayPool<T>`
+3. [TaskBuffer](#3-taskbuffer) - Buffer of `Task`/`Task<T>` for apps that use batching
+4. [BufferWriter](#4-bufferwriter) - Resizable implementation of `IBufferWriter<T>`
+5. [ArrayBufferWriter](#5-arraybufferwriter) - Fixed-length implementation of `IBufferWriter<T>`
+6. [ObjectRent](#6-objectrent) - Allows an object reuse by returning it to `ObjectPool<T>`
+7. [Maps](#7-maps) - Useful maps allocated on a stack
+8. [Partitioners](#8-partitioners) - Simple partitioners implementations
+9. [ArrayStack](#9-arraystack) - A stack data structure that uses a `Span<T>` under the hood
+10. [Arc](#10-ark) - Simple atomic reference counting implementation inspired from Rust language
 
 # 1. Results
 
-Imagine a common task you might have. PM wants you to validate a record, it doesn't matter why you need that, what should you do with it, the only requirement is to validate it for now :)
-
-Here we have an __ImportantData__ class, with amount paid by a customer, source of amount is unknown but we need to validate 
-that amount is > 0
+Imagine a typical AspNet core application that might write data to some storage. For example, user information:
 
 ``` csharp
 
-public record ImportantData(decimal AmountPaid);
+public record UserInformation(string Name, string LastName, DateTime DateOfBirth);
 
 ```
 
-There are multiple ways to do it:
-For example throwing an __InvalidOperationException__:
-
-``` csharp
-
-public void Validate(ImportantData data) {
-    if (data.AmountPaid <= 0) throw new InvalidOperationException(" > 0");
-}
-
-```
-
-or by returning bool (true is valid, false - otherwise)
-
-``` csharp
-
-public bool Validate(ImportantData data) => data.AmountPaid > 0;
-
-```
-
-and so on.
-
-There are some issues however, what if we want to return a reason of validation failure to notify third party on why we have rejected this data.
-
-With first approach you can pass a reason in message like " > 0" (for simplicity) for second approach you can check if result is true or false and do something like write an error, etc. Not so convenient...
-
-Also with first approach let's say that you wrote such validation, your job is done, in a month other guy that works on the same project writes some feature that requires additional logic that involves important stuff, and wraps your validation logic with a method that invokes validation, like
-
-``` csharp
-
-public async Task DoStuff(ImportantData data) {
-    try {
-        Validate(data);
-        SendRequestAndGetResponseFromThirdParty(data);
-    }
-    catch (Exception ex)
-    {
-        // Logging
-        throw;
-    }    
-}
-
-```
-
-Now exception is catched and logged, + it's rethrown, not an issue, we also got logging, but in my practice such pyramid of try + catch + log + throw can grow and you might have enormous number of logs that describe the same issue, because code catches, logs and then rethrows an exception, this is a mess. To fix this you can add your own exception like __ValidationException__ and ignore it in your catch pyramid, but do you have guarantees that everyone would do that?
-
-Results to the rescue!
-
-Results are simple `readonly struct`s which means that you can pass them using `in` C# keyword and also they not allocate once created. There are three types of results in this library:
-
-__UniResult__:
-``` csharp
-
-public readonly struct UniResult<T> : IEquatable<UniResult<T>> where T : class
-{
-    public readonly object? Data;
-
-    public UniResult(T data) => Data = data;
-    public UniResult(object? error) => Data = error;
-
-    public bool IsOk => Data is T or null;
-
-    // other stuff
-}
-
-```
-
-``UniResult`` contains only one field of type ``object`` and has property ``IsOK``, why would someone use it? Well, one field of type ``object`` saves our stack space and we can store any data that is allocated on a heap, regardless if it's an error or ok. Also this class is a generic class so ``T`` here describes what type to expect if everything is OK, for any other outcome you can use ``object?`` constructor.
-
-It's better to explain by example, let's change our method a bit:
-
-```csharp
-
-public UniResult<Unit> Validate(ImportantData data) {
-    if (data.AmountPaid > 0) return new UniResult<Unit>(Unit.Shared);
-
-    return new UniResult<Unit>(new InvalidOperationException(" < 0"));
-}
-
-```
-
-Notice how that method was rewritten, we now return ``UniResult<Unit>``, also if amount is valid we now return ``new UniResult<Unit>(Unit.Shared)`` and if not - ``new UniResult<Unit>(new InvalidOperationException(" < 0"))``. On error we don't throw an exception we can simply wrap it.
-
-What is ``Unit``?
-
-Well, with ``UniResult<T>``/``Result<T>`` we can't have void type on Ok outcome like, ``UniResult<void>``, so we need to somehow say that on success we don't provide anything special/meaningful that is why ``Unit`` is created.
-
-```csharp
-
-public sealed class Unit : IEquatable<Unit>
-{
-    public static readonly Unit Shared = new();
-}
-
-```
-
-How can we use it?
-
-``` csharp 
-
-public async Task<UniResult<Unit>> DoStuff(ImportantData data) {
-    try {
-        var result = Validate(data);
-        if (!result.IsOk) return result;
-
-        await SendRequestAndGetResponseFromThirdParty(data);
-    }
-    catch (Exception ex)
-    {
-        return new UniResult<Unit>(ex);
-    }
-}
-
-
-```
-
-We can now simply check IsOk property and continue if validation succeeded, if not - return our result. Notice that if an exception is thrown we catch it and wrap in our result, we can do it, our field is an ``object`` :) We also do not use logging here, we can do logging somewhere else, potentually rejecting our logger as a dependency.
-
-Potential alternatives for validate:
-
-```csharp
-
-public UniResult<Unit> Validate(ImportantData data) {
-    if (data.AmountPaid > 0) return new UniResult<Unit>(Unit.Shared);
-
-    return new UniResult<Unit>(" < 0");
-}
-
-// or
-
-public readonly record ValidationError(string Message /*and other fields*/);
-
-public UniResult<Unit> Validate(ImportantData data) {
-    if (data.AmountPaid > 0) return new UniResult<Unit>(Unit.Shared);
-
-    return new UniResult<Unit>(new ValidationError(" < 0"));
-}
-
-```
-
-You can return string instead like: ``new UniResult<Unit>(" < 0")`` or even create your own class:
-``ValidationError`` and wrap it by UniResult: ``new UniResult<Unit>(new ValidationError(" < 0"))`` but second example is kinda bad because we allocate validation error each time, it's for you to decide, you can cache it in ``static readonly`` variable somewhere too.
-
-Now that we have so many possibilities on error we can do something like this:
+And a storage:
 
 ``` csharp
 
 // Pseudocode
 
-public static class UniResultExtensions {
-    public static void /* Or Unit as you prefer */ LogError<T>(this in UniResult<T> result, ILogger logger) {
-        if (result.IsOk) return;
-
-        if (result.Error is Exception ex) logger.Error(ex, "Some error occurred");
-        else if (result.Error is string str) logger.Error($"Validation error occurred. Message: {str}");
-        else if (result.Error is ValidationException v) => logger.Error(v, "Validation error occurred");
-        else logger.Error($"Some error occurred. Error: {result.Error?.ToString()}");
-
-        /* If unit: return Unit.Shared; */
-    }
+public interface IStorage {
+    Task<?> Save(UserInformation info);
 }
 
-``` 
+```
 
-This extension covers all cases that might happen in our code. You can create your own convention on what should you use as error I mean ``Exception`` or ``string`` or own ``class``, but unfortunatelly you can't use ``struct``s because they will be boxed.
+Some questions arise with an interface provided above:
 
-So why would someone use UniResult:
-1. You don't want to allocate a wrapper
-2. You have your errors and ok values as classes so you can benefit by using only one field
-3. Your code throws on errors, throwing an exception is not cheap, so you might move to UniResult/Result instead
-4. You want to use something like this but don't want to write it from scratch
-5. You've seen Result in F# or in Rust, this is mostly the same
+What should such method return? - A simple `Task` might do the trick. 
+But how should we handle an error? - We can setup a `ILogger` implementation as a private property and log an exception or don't catch an error at all and hope that there is a `try/catch` block somewhere in our app.
+How can caller understand if this method handles an error or maybe it never throws an error?
 
-
-__Result<`T>__ or __Result<TOk,TError> (aka Either)__
-
-Notice that with ``UniResult`` you can only have classes as success results and classes as error results, because this type of result only has one field (hence the name ``Uni``), how can we return structs as errors or ok results, well, ``Result<T>`` and ``Result<TOk, TError>`` to the rescue, simple definition:
+Well, `UniResult<TOk, TError>` and `Result<TOk, TError>` to the rescue:
 
 ``` csharp
-
-public readonly struct Result<T> : IEquatable<Result<T>>
-{
-    public readonly T? Data;
-    public readonly object? Error;
-
-    public bool IsOk => Error == null;
-
-    // Other stuff
-}
 
 public readonly struct Result<TOk, TError> : IEquatable<Result<TOk, TError>>
 {
@@ -209,15 +51,130 @@ public readonly struct Result<TOk, TError> : IEquatable<Result<TOk, TError>>
     public readonly TError? Error;
     public readonly bool IsOk;
 
-    // Other stuff
+    public Result(TOk? ok)
+    {
+        Ok = ok;
+        IsOk = true;
+        Error = default;
+    }
+
+    public Result(TError error)
+    {
+        Ok = default;
+        Error = error;
+        IsOk = false;
+    }
+    
+    // Other methods like Equals/ToString etc
+}
+
+public readonly struct UniResult<TOk, TError> : IEquatable<UniResult<TOk, TError>> where TOk : class where TError : class
+{
+    public readonly object? Data;
+
+    public UniResult(TOk? data) => Data = data;
+    public UniResult(TError error) => Data = error;
+
+    public bool IsOk => Data is TOk or null;
+
+    // Other methods like Equals/ToString etc
 }
 
 ```
 
-Number of fields grow with the length of the definition :)
-With ``Result<T>`` you can return a ``struct`` as an ok result, but you still need to have error as a ``class``, with ``Result<TOk, TError>`` you can have both ok and error as structs but number of fields + size of your data in stack growth, personally, I haven't seen any issues with such approach, in Rust, for example, everything is in stack until you specifically allocate on a heap using ``Box<T>``, in C# you mainly allocate on a heap, destroying performance because GC has to collect all of your objects. 
+As you can see those are `readonly struct`s which means that they live on a stack + they are immutable + they have a copy semantics (they are not passed by reference).
+You can store either error result of type `TError` or successful result of type `TOk` - nothing else.
+Also all of the fields are public which means that you can write your own extensions freely, a common usage of such structs might be like this:
 
-We can rewrite our validation logic like this using Result<TOk, TError>:
+``` csharp
+
+// Pseudocode
+
+var result = new UniResult<string, Exception>("Hello there");
+if (result.IsOk) Console.WriteLine(result.Ok);
+else Console.WriteLine(result.Error.ToString());
+
+// Or
+
+var message = result switch 
+{
+    (var ok, default) => ok,
+    (default, var exception) => exception.ToString()
+};
+
+Console.WriteLine(message);
+
+// Or
+
+message = result.IsOk switch 
+{
+    true => result.Ok,
+    false => result.Error
+};
+
+```
+
+You can use pattern matching to get internal values either error or data, or using `else/if` :)
+
+The difference between `UniResult` and `Result` is that `UniResult` can only contain classes while `Result` can contain structs. `UniResult` only requires a size of a reference on a stack because internally it has only one field of type `object` and casts it to `TOk` or to `TError`, you can use structs with `UniResult` but structs will be boxed, that's why it's better to consider `Result` for such cases. `Result` uses more stack space because it contains three fields - `bool` to determine if result is ok or error and two data fields of types `TOk` and `TError`.
+
+We can now rewrite our `IStorage` definition like this:
+
+``` csharp
+
+public interface IStorage 
+{
+    Task<UniResult<Unit, Exception>> Save(UserInformation info);
+}
+
+```
+
+Notice that we now explicitly state that method returns some class `Unit` or `Exception` so caller understands that any exception is returned and not thrown. Why can this be beneficial? Throwing and unwinding stack can be costly so it's better to catch it and return as is. Also with `Result/UniResult` we can't use something like `UniResult<void, Exception>` that's why `Unit` is provided - which is a class with no fields/properties, which means that you return nothing.
+
+``` csharp
+
+public sealed class Unit : IEquatable<Unit>
+{
+    public static readonly Unit Shared = new();
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool Equals(Unit other) => true;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public override bool Equals(object? obj) => obj is Unit other && Equals(other);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public override int GetHashCode() => 0;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public override string ToString() => nameof(Unit);
+}
+
+```
+
+Results are also good for validation or buisness logic, instead of throwing an exception you can return a `Result` instead with error or success result:
+
+``` csharp
+
+// Pseudocode
+
+public UniResult<Unit, string> Validate(UserInformation info) {
+    if (string.IsNullOrWhiteSpace(info.FirstName)) return UniResult.Error<Unit, string>("FirstName should not be empty....");
+    // other vaidations
+
+    return UniResult.Ok<Unit, string>(Unit.Shared);
+}
+
+```
+
+So why would someone use `UniResult/Result`:
+1. You don't want to allocate a wrapper
+2. You have your errors and ok values as classes so you can benefit by using only one field (for `UniResult`)
+3. Your code throws on errors, throwing an exception is not cheap, so you might move to `UniResult/Result` instead
+4. You want to use something like this but don't want to write it from scratch
+5. You've seen Result in F# or in Rust, this is mostly the same
+
+Here is an example on how you might use `Result` in your app code:
 
 ``` csharp
 
@@ -307,40 +264,13 @@ public static class Extensions {
         }
 
         logger.Error(result.Error.Exception!, "Unhandled exception occurred");
+        return Response.Error(Code.UnhandlerException, "Unhandled exception occurred");
     }
-
 }
 
 ```
 
 Here is the simple application code, we send http requests and handle exceptions, have an extension to write logs and also have a validation mechanism, everything is plain simple. Rule of thumb - you should handle an exception in a method that returns a ``Result`` or ``UniResult``, this way methods like ``DoStuff`` can rely that if inner method return results everything is handled.
-
-Also check useful ``static`` __Result__ class that contains plenty of interesting methods:
-
-
-``` csharp
-
-public static class Result
-{
-    public static readonly Result<Unit> UnitResult = new(new Unit());
-
-    public static readonly Task<Result<Unit>> UnitTask = Task.FromResult(UnitResult);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<T> Ok<T>(T data)  => new(data);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<T> Error<T>(Exception ex) => new(ex);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<TOk, TError> Ok<TOk, TError>(TOk data) => new(data);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<TOk, TError> Error<TOk, TError>(TError error) => new(error);
-}
-
-```
-
 
 __NOTES__:
 1. Why all fields are public? Well Results are ``readonly struct``s, so you can't exchange data unless you use non-imutable data like ``Dictionary<TKey, TValue>``, also you gain a benefit to write your own extensions by your needs as all fields are available to you, pretty simple.
@@ -1240,4 +1170,116 @@ static Result<(HashSet<string> Providers, HashSet<string> Counters)> Parse(ReadO
 
 We use ``Result<T>`` and wrap an ``Exception`` if something goes wrong, note that ``ArrayStack<T>`` also exposes a property ``WrittenSpan`` so you can get part of array that is written to it using ``Push`` or ``Pop``, we use it to build a string, for example: ``System.Runtime`` or ``gc-count``, we also use ``Stage`` to understand what should be parsed - counter or provider.
 
+# 10. Arc
 
+`Arc<T>` is a simple atomic reference counting implementation that allows you to drop an instance once all of threads are done using it. `Arc` also allows you to specify an `Action<T>` which will be called once it's internal counter is dropped to 0 so `Arc<T>` is not used by anyone and internal resource can be dropped, `Arc` also handles `IDisposable` cases and calls a `Dispose` method on drop:
+
+``` csharp
+
+public sealed class Arc<T> where T : class
+{
+    Action<T>? _drop;
+    volatile T? _value;
+    int _references = 0;
+
+    public Arc(T value) : this(value, default!) {}
+
+    public Arc(T value, Action<T> drop)
+    {
+        _value = value;
+        _drop = drop;
+    }
+
+    public ArcRent<T> Rent()
+    {
+        if (_value == default) throw new InvalidOperationException("Arc does not contain a value");
+        Interlocked.Increment(ref _references);
+        return new ArcRent<T>(this);
+    }
+    
+
+    // other stuff
+}
+```
+
+As you can see you call a `Rent` method to rent a value from `Arc`, this action increments `Arc`'s internal counter. Once you're done with using a value - you can call `Dispose` on returned rent, this is when internal counter is dropped and potentially your value's `Dispose` is called.
+
+``` csharp
+
+// Pseudocode:
+
+var arc = new Arc<SharedResource>();
+
+using var rent = arc.Rent(); // Counter got incremented
+rent.Value.DoStuff();
+
+// This is where rent.Dispose() is called and internal counter is decremented
+
+```
+
+A potential real-world example for `Arc` is issue with C# Redis client implementation when you use Kubernetes that does not guarantees stable IPs for Redis nodes so when instance is restarted a new IP is assigned to Pod and `StackExchange.Redis` implementation can't reconnect. What you can do instead is to track connection issues store `Arc` and recreate an `Arc` once connection issue occured so threads that use old `Arc` will dispose internal Redis client and threads will start use new Redis client's instance because you recreated an `Arc`:
+
+``` csharp
+
+// Pseudocode
+
+// Wrapper around Redis ConnectionMultiplexer
+public sealed class RedisClient : IDisposable
+{
+    public RedisClient(string connectionString, ActionBlock<Unit> channel)
+    {
+        Raw = ConnectionMultiplexer.Connect(connectionString); // Create connection to redis
+        Raw.ConnectionFailed += (s, e) => channel.Post(Unit.Shared); // once issue occurs we send a message to channel
+    }
+
+    public ConnectionMultiplexer Raw { get; }
+
+    public void Dispose() => Raw?.Dispose();
+}
+
+// Provides a redis client :)
+public sealed class RedisClientProvider : IDisposable
+{
+    ActionBlock<Unit> _refresher; // Or you can use Channels
+    ArcRent<RedisClient> _redisRent; // Store a rent so counter is 1 at minimum
+
+    volatile Arc<RedisClient> _arc; 
+
+    public RedisClientProvider(string connectionString)
+    {
+        _refresher = new ActionBlock<Unit>(u => 
+        {
+            using var oldRent = _redisRent; // Drop counter on an old instance by 1 (if it's still > 0 other thread will dispose old RedisClient)
+
+            _arc = new Arc<RedisClient>(new RedisClient(connectionString));
+            _redisRent = _arc.Rent(); // Create a new rent
+        });
+        _arc = new Arc<RedisClient>(new RedisClient(connectionString));
+        _redisRent = _arc.Rent(); // Rent and increase counter
+    }
+
+    public ArcRent<RedisClient> Rent() => _arc.Rent();
+
+    public void Dispose()
+    {
+        _refresher.Complete();
+        _refresher.Completion.Wait();
+        _redisRent.Dispose();
+    }
+
+}
+
+
+// Main
+
+var provider = new RedisClientProvider("connection");
+
+// Somewhere in controller action/method/etc
+
+using var redisRent = provider.Rent();
+// Do something with redis client
+redisRent.Value.Raw.Somemethod();
+
+// Rent will be disposed and counter will be decremented
+
+```

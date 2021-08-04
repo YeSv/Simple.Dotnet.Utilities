@@ -43,7 +43,7 @@
         [Fact]
         public void ArrayStack_Should_Throw_On_Overflow()
         {
-            Assert.Throws<IndexOutOfRangeException>(() =>
+            Assert.Throws<InvalidOperationException>(() =>
             {
                 var arrayStack = new ArrayStack<int>(stackalloc int[10]);
                 for (var i = 0; i < 20; i++) arrayStack.Push(i);
@@ -53,7 +53,17 @@
         [Fact]
         public void ArrayStack_Should_Throw_On_Empty_Pop()
         {
-            Assert.Throws<IndexOutOfRangeException>(() =>
+            Assert.Throws<InvalidOperationException>(() =>
+            {
+                var arrayStack = new ArrayStack<int>(stackalloc int[10]);
+                arrayStack.Push(1);
+                arrayStack.Pop();
+                arrayStack.Push(1);
+                arrayStack.Pop();
+                arrayStack.Pop();
+            });
+
+            Assert.Throws<InvalidOperationException>(() =>
             {
                 var arrayStack = new ArrayStack<int>(stackalloc int[10]);
                 arrayStack.Pop();
