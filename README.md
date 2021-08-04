@@ -1,5 +1,5 @@
 ## NuGet
-[Simple.Dotnet.Buffers](https://www.nuget.org/packages/Simple.Dotnet.Utilities/)
+[Simple.Dotnet.Utilities](https://www.nuget.org/packages/Simple.Dotnet.Utilities/)
 
 ## Table of contents
 1. [Results](#1-results) - Wrappers around return values
@@ -11,7 +11,7 @@
 7. [Maps](#7-maps) - Useful maps allocated on a stack
 8. [Partitioners](#8-partitioners) - Simple partitioners implementations
 9. [ArrayStack](#9-arraystack) - A stack data structure that uses a `Span<T>` under the hood
-10. [Arc](#10-ark) - Simple atomic reference counting implementation inspired from Rust language
+10. [Arc](#10-arc) - Simple atomic reference counting implementation inspired from Rust language
 
 # 1. Results
 
