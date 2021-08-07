@@ -19,12 +19,20 @@ jobs:
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
       NUGET_XMLDOC_MODE: skip
     steps:
-      - run: dotnet build src/Simple.Dotnet.Utilities -c Release -p:Version=${{ env.GIT_TAG }}
-      - run: dotnet test src/Simple.Dotnet.Utilities.Tests -c Release --no-build
-      - run: dotnet pack src/Simple.Dotnet.Utilities/Simple.Dotnet.Utilities.csproj -c Release --no-build -p:Version=${{ env.GIT_TAG }} -o ./publish
-      - uses: actions/upload-artifact@v1
+      - name: Setup .NET Core SDK ${{ matrix.dotnet-version }}
+        uses: actions/setup-dotnet@v1.7.2
         with:
-          name: nuget
+          dotnet-version: ${{ matrix.dotnet-version }}
+      - name: Build
+        run: dotnet build src/Simple.Dotnet.Utilities -c Release -p:Version=${{ env.GIT_TAG }}
+      - name: Test
+        run: dotnet test src/Simple.Dotnet.Utilities.Tests -c Release --no-build
+      - name: Pack 
+        run: dotnet pack src/Simple.Dotnet.Utilities/Simple.Dotnet.Utilities.csproj -c Release --no-build -p:Version=${{ env.GIT_TAG }} -o ./publish
+      - name: Create artifact
+        uses: actions/upload-artifact@v1
+        with:
+          name: package
           path: ./publish/
           retention-days: 1
 
@@ -36,5 +44,9 @@ jobs:
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
       NUGET_XMLDOC_MODE: skip
     steps:
-      - uses: actions/download-artifact@v2-preview
-      - run: dotnet nuget push "*.nupkg" --skip-duplicate -s https://www.nuget.org/api/v2/package -k ${{ secrets.NUGET_KEY }}
+      - name: Download artifact
+        uses: actions/download-artifact@v2-preview
+        with:
+          name: package
+      - name: Nuget push
+        run: dotnet nuget push "*.nupkg" --skip-duplicate -s https://www.nuget.org/api/v2/package -k ${{ secrets.NUGET_KEY }}
