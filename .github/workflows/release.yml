@@ -27,7 +27,7 @@ jobs:
       - name: Build
         run: dotnet build src/Simple.Dotnet.Utilities -c Release -p:Version=${{ env.GIT_TAG }}
       - name: Test
-        run: dotnet test src/Simple.Dotnet.Utilities.UnitTests -c Release --no-build
+        run: dotnet test tests/Simple.Dotnet.Utilities.UnitTests -c Release --no-build
       - name: Pack 
         run: dotnet pack src/Simple.Dotnet.Utilities/Simple.Dotnet.Utilities.csproj -c Release --no-build -p:Version=${{ env.GIT_TAG }} -o ./publish
       - name: Create artifact
