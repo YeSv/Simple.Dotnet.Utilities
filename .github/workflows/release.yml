@@ -19,6 +19,7 @@ jobs:
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
       NUGET_XMLDOC_MODE: skip
     steps:
+      - uses: actions/checkout@v2
       - name: Setup .NET Core SDK ${{ matrix.dotnet-version }}
         uses: actions/setup-dotnet@v1.7.2
         with:
@@ -48,5 +49,7 @@ jobs:
         uses: actions/download-artifact@v2-preview
         with:
           name: package
+      - name: Setup .NET Core SDK
+        uses: actions/setup-dotnet@v1.7.2
       - name: Nuget push
         run: dotnet nuget push "*.nupkg" --skip-duplicate -s https://www.nuget.org/api/v2/package -k ${{ secrets.NUGET_KEY }}
