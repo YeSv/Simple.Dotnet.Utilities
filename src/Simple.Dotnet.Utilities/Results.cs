@@ -44,11 +44,11 @@
             };
         }
 
-        public static void Deconstruct(in UniResult<TOk, TError> result, out TOk? ok, out TError? error)
+        public void Deconstruct(out TOk? ok, out TError? error)
         {
             ok = default; error = default;
-            if (result.IsOk) ok = result.Ok;
-            else error = result.Error;
+            if (IsOk) ok = Ok;
+            else error = Error;
         }
 
         public override bool Equals(object obj) => obj is UniResult<TOk, TError> other && Equals(other);
@@ -113,11 +113,11 @@
         public override string ToString() => Ok?.ToString() ?? Error?.ToString() ?? "Result with null data";
 
 
-        public static void Deconstruct(in Result<TOk, TError> result, out TOk? ok, out TError? error)
+        public void Deconstruct(out TOk? ok, out TError? error)
         {
             ok = default; error = default;
-            if (result.IsOk) ok = result.Ok;
-            else error = result.Error;
+            if (IsOk) ok = Ok;
+            else error = Error;
         }
 
         public static explicit operator string(in Result<TOk, TError> result) => result.IsOk switch

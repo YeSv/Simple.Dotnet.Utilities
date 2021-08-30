@@ -17,11 +17,11 @@
             _drop = drop;
         }
 
-        public ArcRent<T> Rent()
+        public ArcRent Rent()
         {
             if (_value == default) throw new InvalidOperationException("Arc does not contain a value");
             Interlocked.Increment(ref _references);
-            return new ArcRent<T>(this);
+            return new ArcRent(this);
         }
 
         void Drop()
@@ -32,7 +32,7 @@
             _value = default;
         }
 
-        public struct ArcRent<T> : IDisposable where T : class
+        public struct ArcRent : IDisposable
         {
             Arc<T>? _owner;
 
