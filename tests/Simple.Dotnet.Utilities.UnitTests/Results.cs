@@ -203,10 +203,34 @@
         }
 
         [Fact]
+        public void Result_Can_Be_Deconstructed()
+        {
+            var (unit, error) = new Result<Unit, Exception>(Unit.Shared);
+            error.Should().BeNull();
+            unit.Should().Be(Unit.Shared);
+
+            (unit, error) = new Result<Unit, Exception>(new Exception());
+            unit.Should().BeNull();
+            error.Should().NotBeNull();
+        }
+
+        [Fact]
         public void UniResult_AsResult_Should_Produce_Valid_Result()
         {
             new UniResult<Unit, Exception>(Unit.Shared).AsResult().Ok.Should().Be(Unit.Shared);
             new UniResult<Unit, Exception>(new Exception()).AsResult().Error.Should().NotBeNull();
+        }
+
+        [Fact]
+        public void UniResult_Can_Be_Deconstructed()
+        {
+            var (unit, error) = new UniResult<Unit, Exception>(Unit.Shared);
+            error.Should().BeNull();
+            unit.Should().Be(Unit.Shared);
+
+            (unit, error) = new UniResult<Unit, Exception>(new Exception());
+            unit.Should().BeNull();
+            error.Should().NotBeNull();
         }
     }
 }
