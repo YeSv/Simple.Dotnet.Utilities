@@ -14,29 +14,26 @@ namespace Simple.Dotnet.Utilities.Pools
     {
         T? _value;
         ObjectPool<T>? _pool;
-        readonly Action<T>? _returnPolicy;
+        Action<T>? _returnPolicy;
 
         public ObjectRent(ObjectPool<T> pool) : this(pool, null)
         { }
 
-        public ObjectRent(ObjectPool<T> pool, Action<T>? returnPolicy)
-        {
-            _pool = pool;
-            _value = null;
-            _returnPolicy = returnPolicy;
-        }
+        public ObjectRent(ObjectPool<T> pool, Action<T>? returnPolicy) =>
+            (_pool, _value, _returnPolicy) = (pool, default, returnPolicy);
 
-        public T Value => _value ??= _pool?.Get();
+        public T Value => _value ??= _pool?.Get()!;
 
         public void Dispose()
         {
-            if (_value == null) return;
-            
-            _returnPolicy?.Invoke(_value);
-            _pool?.Return(_value);
+            var (value, pool, policy) = (_value, _pool, _returnPolicy);
 
-            _pool = null;
-            _value = null;
+            (_value, _pool, _returnPolicy) = (null, null, null);
+
+            if (value == null) return;
+
+            policy?.Invoke(value);
+            pool?.Return(value);
         }
     }
 }
