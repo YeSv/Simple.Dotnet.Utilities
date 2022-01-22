@@ -46,9 +46,10 @@
 
             public void Dispose()
             {
-                Value = default;
-                _owner?.Drop();
-                _owner = default;
+                var owner = _owner;
+                Value = default; _owner = default;
+
+                owner?.Drop();
             }
         }
     }

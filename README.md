@@ -12,6 +12,7 @@
 8. [Partitioners](#8-partitioners) - Simple partitioners implementations
 9. [ArrayStack](#9-arraystack) - A stack data structure that uses a `Span<T>` under the hood
 10. [Arc](#10-arc) - Simple atomic reference counting implementation inspired from Rust language
+11. [ValueRent](#11-valuerent) - Wrapper around rented value
 
 # 1. Results
 
@@ -1278,3 +1279,42 @@ redisRent.Value.Somemethod();
 // Rent will be disposed and counter will be decremented
 
 ```
+
+# 11. ValueRent
+
+`ObjectRent<T>` is strongly dependent on `ObjectPool<T>` but sometimes you don't use such pools under the hood but still want to "rent" value from some source and then return it back. Since `ObjectRent<T>` does not meet such requirement - `ValueRent<T, TContext>` and `ValueRent<T>` were created. The difference between `ValueRent<T>` and `ValueRent<T, TContext>` is that `ValueRent<T>` does not have generic `context` it is of type `object`. Context allows you to wrap some context that you want to use when you return an instance, you can ignore it altogether, this is needed in order to not allocate a new object (explained later).
+
+Let's check examples:
+
+``` csharp
+
+// Pseudocode
+
+// Creating an object pool
+var pool = new ObjectPool<T>(...);
+
+// Create a rent getting value from a pool and providing a pool as a context
+using var rent = new ValueRent<T>(pool.Get(), pool, (rentedValue, context) => {
+    // Once rent is disposed we want to return value to a pool
+    var pool = (ObjectPool<T>)context;
+    pool.Return(rentedValue);
+});
+
+
+// Do something with rentedValue
+ImportantMethod(rent.Value);
+
+// NOTE: we could have do someting like this:
+using var rent = new ValueRent<T>(pool.Get(), (rentedValue, _) => {
+    // Once rent is disposed we want to return value to a pool
+    pool.Return(rentedValue);
+});
+
+
+// We did not pass pool as a context above. This is perfectly fine, but we allocated a closure
+// in an Action, context parameter is provided for such cases where you don't want to allocate
+// additional objects
+
+```
+
+As you can see we completely emulated the behavior that `ObjectRent<T>` provides using `ValueRent<T>`, we could have used also `ValueRent<T, ObjectPool<T>>` instead, it depends on your preference.
