@@ -22,6 +22,7 @@ jobs:
       matrix:
         dotnet-version: ['6.0.x']
     steps:
+      - uses: actions/checkout@v2
       - name: Setup .NET Core SDK ${{ matrix.dotnet-version }}
         uses: actions/setup-dotnet@v1.7.2
         with:
@@ -29,7 +30,7 @@ jobs:
       - name: Build
         run: dotnet build src/Simple.Dotnet.Utilities -c Release -p:Version=${{ env.GIT_TAG }}
       - name: Test
-        run: dotnet test src/Simple.Dotnet.Utilities.Tests -c Release --no-build
+        run: dotnet test tests/Simple.Dotnet.Utilities.UnitTests -c Release --no-build
       - name: Pack 
         run: dotnet pack src/Simple.Dotnet.Utilities/Simple.Dotnet.Utilities.csproj -c Release --no-build -p:Version=${{ env.GIT_TAG }} -o ./publish
       - name: Create artifact
@@ -51,5 +52,7 @@ jobs:
         uses: actions/download-artifact@v2-preview
         with:
           name: package
+      - name: Setup .NET Core SDK
+        uses: actions/setup-dotnet@v1.7.2
       - name: Nuget push
         run: dotnet nuget push "*.nupkg" --skip-duplicate -s https://www.nuget.org/api/v2/package -k ${{ secrets.NUGET_KEY }}
